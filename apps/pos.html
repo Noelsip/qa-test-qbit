@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kasir POS</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #f4f5f7;
+            margin: 0;
+            padding: 16px;
+            color: #222;
+        }
+        .wrap{
+            max-width: 1000px;
+            margin: auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 16px;
+        }
+        .full {
+            grid-column: 1 / -1;
+        }
+        h2 {
+            font-size: 16px;
+            margin: 0 0 12px;
+        }
+        .produk {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        button {
+            padding: 8px 10px;
+            border: 1px solid #bbb;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+        }
+        button:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+        .utama{
+            background: #1f6f5c;
+            color: white;
+            border-color: #1f6f5c;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        td, th {
+            border-bottom: 1px solid #eee;
+            padding: 6px 4px;
+            text-align: left;
+        }
+        .baris {
+            display: flex;
+            justify-content: space-between;
+            margin: 6px 0;
+        }
+        .pesan {
+            min-height: 18px;
+            font-size: 13px;
+            margin: 8px 0;
+        }
+        .sembunyi {
+            display: none;
+        }
+        #struk {
+            white-space: pre;
+            font-family: monospace;
+            background: #fafafa;
+            border: 1px dashed #999;
+            padding: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+
+        <!-- Pilih barang -->
+        <div class="card">
+            <h2>Daftar Barang</h2>
+            <div class="produk" id="daftar-produk"></div>
+        </div>
+
+        <!-- Keranjang & diskon -->
+        <div class="card">
+            <h2>Keranjang</h2>
+            <table>
+            <thead><tr><th>Barang</th><th>Qty</th><th>Harga</th><th></th></tr></thead>
+            <tbody id="isi-keranjang"></tbody>
+            </table>
+            <div class="baris"><span>Subtotal</span><strong id="subtotal">Rp0</strong></div>
+            <div class="baris"><span>Diskon</span><strong id="diskon">Rp0</strong></div>
+            <div class="baris"><span>Total</span><strong id="total">Rp0</strong></div>
+            <button id="btn-diskon">Apply Discount</button>
+            <div class="pesan" id="pesan-diskon"></div>
+
+            <h2>Metode Pembayaran</h2>
+            <label><input type="radio" name="metode" id="metode-tunai" value="tunai" checked> Tunai</label>
+            <label><input type="radio" name="metode" id="metode-qris" value="qris"> QRIS</label>
+            <label><input type="radio" name="metode" id="metode-split" value="split"> Split 40% Tunai : 60% QRIS</label>
+            <p><button class="utama" id="btn-bayar" disabled>Proses Pembayaran</button></p>
+        </div>
+
+        <!-- Proses pembayaran -->
+        <div class="card full sembunyi" id="panel-bayar">
+            <h2>Proses Pembayaran</h2>
+            <div class="baris"><span>Total tagihan</span><strong id="tagihan">Rp0</strong></div>
+            <div id="info-split" class="sembunyi">
+            <div class="baris"><span>Porsi Tunai (40%)</span><strong id="porsi-tunai">Rp0</strong></div>
+            <div class="baris"><span>Porsi QRIS (60%)</span><strong id="porsi-qris">Rp0</strong></div>
+            </div>
+
+            <div id="tahap-tunai" class="sembunyi">
+            <label>Uang diterima <input type="number" id="uang-tunai"></label>
+            <button id="btn-bayar-tunai">Bayar Tunai</button>
+            <div class="baris"><span>Kembalian</span><strong id="kembalian">Rp0</strong></div>
+            </div>
+
+            <div id="tahap-qris" class="sembunyi">
+            <p>Scan QRIS untuk membayar <strong id="nominal-qris">Rp0</strong></p>
+            <button id="btn-qris-berhasil">Simulasi: QRIS Berhasil</button>
+            <button id="btn-qris-gagal">Simulasi: QRIS Gagal</button>
+            </div>
+
+            <div class="pesan" id="pesan-bayar"></div>
+            <div class="baris"><span>Status</span><strong id="status">Belum Dibayar</strong></div>
+            <button id="btn-batal">Batalkan Transaksi</button>
+            <button class="utama" id="btn-selesai" disabled>Complete Sale</button>
+        </div>
+
+        <!-- Struk -->
+        <div class="card full sembunyi" id="panel-struk">
+            <h2>Struk</h2>
+            <div id="struk"></div>
+            <p>
+            <button id="btn-cetak">Print Receipt</button>
+            <input type="text" id="email-struk" placeholder="Email pelanggan">
+            <button id="btn-kirim-struk">Send Digital Receipt</button>
+            </p>
+            <div class="pesan" id="pesan-struk"></div>
+        </div>
+
+    </div>
+
+    <script>
+        // Aturan bisnis
+        const BATAS_DISKON = 100000;
+        const PERSEN_DISKON = 0.10;
+        const PORSI_TUNAI = 0.40;
+
+        const PRODUK = [
+            { id: 'nasi-goreng', nama: 'Nasi Goreng', harga: 35000 },
+            { id: 'roti-bakar', nama: 'Roti Bakar', harga: 25000 },
+            { id: 'kopi-susu', nama: 'Kopi Susu', harga: 18000 },
+            { id: 'kentang-goreng', nama: 'Kentang Goreng', harga: 22000 },
+            { id: 'mie-ayam', nama: 'Mie Ayam', harga: 27000 },
+            { id: 'cokelat-batang', nama: 'Cokelat Batang', harga: 12999 },
+            { id: 'teh-manis', nama: 'Teh Manis', harga: 8000 },
+            { id: 'air-mineral', nama: 'Air Mineral', harga: 5000 },
+        ];
+
+        function rupiah(n) { return 'Rp' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+        function el(id) { return document.getElementById(id); }
+        function tulis(id, teks) { el(id).textContent = teks; }
+
+        // Data transaksi
+        let keranjang = [];
+        let diskonDipakai = false;
+        let terkunci = false;
+        let metode = 'tunai';
+        let tagihan = 0;
+        let porsi = { tunai: 0, qris: 0 };
+        let dibayar = { tunai: 0, qris: 0 };
+        let kembalian = 0;
+        let selesai = false;
+        window.jumlahPenjualan = 0;
+
+        function hitungSubtotal() { return keranjang.reduce((jml, b) => jml + b.harga * b.qty, 0); }
+        function hitungDiskon(subtotal) { return subtotal >= BATAS_DISKON ? Math.round(subtotal * PERSEN_DISKON) : 0; }
+
+        // Tampilan keranjang
+        function tampilkan() {
+            const subtotal = hitungSubtotal();
+            if (diskonDipakai && subtotal < BATAS_DISKON) {
+            diskonDipakai = false;
+            tulis('pesan-diskon', 'Diskon dibatalkan karena total belanja di bawah ' + rupiah(BATAS_DISKON));
+            }
+            const diskon = diskonDipakai ? hitungDiskon(subtotal) : 0;
+            tulis('subtotal', rupiah(subtotal));
+            tulis('diskon', diskon ? '-' + rupiah(diskon) : 'Rp0');
+            tulis('total', rupiah(subtotal - diskon));
+
+            el('isi-keranjang').innerHTML = keranjang.map(b =>
+            '<tr><td>' + b.nama + '</td>' +
+            '<td id="qty-' + b.id + '">' + b.qty + '</td>' +
+            '<td>' + rupiah(b.harga * b.qty) + '</td>' +
+            '<td><button id="kurangi-' + b.id + '">-</button> <button id="hapus-' + b.id + '">Hapus</button></td></tr>'
+            ).join('');
+
+            document.querySelectorAll('#daftar-produk button, #isi-keranjang button').forEach(t => { t.disabled = terkunci; });
+            el('btn-diskon').disabled = terkunci;
+            el('btn-bayar').disabled = terkunci || keranjang.length === 0;
+        }
+
+        el('daftar-produk').innerHTML = PRODUK.map(p =>
+            '<button id="tambah-' + p.id + '">' + p.nama + '<br><small>' + rupiah(p.harga) + '</small></button>').join('');
+
+        el('daftar-produk').addEventListener('click', e => {
+            const tombol = e.target.closest('button');
+            if (!tombol || terkunci) return;
+            const p = PRODUK.find(x => 'tambah-' + x.id === tombol.id);
+            const ada = keranjang.find(b => b.id === p.id);
+            if (ada) ada.qty++; else keranjang.push({ id: p.id, nama: p.nama, harga: p.harga, qty: 1 });
+            tampilkan();
+        });
+
+        el('isi-keranjang').addEventListener('click', e => {
+            const tombol = e.target.closest('button');
+            if (!tombol || terkunci) return;
+            const idBarang = tombol.id.replace(/^(kurangi|hapus)-/, '');
+            const barang = keranjang.find(b => b.id === idBarang);
+            if (tombol.id.startsWith('kurangi-')) barang.qty--;
+            if (tombol.id.startsWith('hapus-') || barang.qty <= 0) keranjang = keranjang.filter(b => b.id !== idBarang);
+            tampilkan();
+        });
+
+        // Diskon
+        el('btn-diskon').addEventListener('click', () => {
+            if (diskonDipakai) { tulis('pesan-diskon', 'Diskon sudah diterapkan'); return; }
+            if (hitungSubtotal() >= BATAS_DISKON) {
+            diskonDipakai = true;
+            tulis('pesan-diskon', 'Diskon 10% berhasil diterapkan');
+            } else {
+            tulis('pesan-diskon', 'Minimum belanja ' + rupiah(BATAS_DISKON) + ' untuk mendapatkan diskon');
+            }
+            tampilkan();
+        });
+
+        // Pembayaran
+        el('btn-bayar').addEventListener('click', () => {
+            if (keranjang.length === 0) return;
+            metode = document.querySelector('input[name=metode]:checked').value;
+            const subtotal = hitungSubtotal();
+            tagihan = subtotal - (diskonDipakai ? hitungDiskon(subtotal) : 0);
+            terkunci = true;
+            document.querySelectorAll('input[name=metode]').forEach(r => { r.disabled = true; });
+
+            if (metode === 'split') {
+            porsi.tunai = Math.round(tagihan * PORSI_TUNAI);
+            porsi.qris = tagihan - porsi.tunai;
+            } else {
+            porsi = { tunai: metode === 'tunai' ? tagihan : 0, qris: metode === 'qris' ? tagihan : 0 };
+            }
+
+            el('panel-bayar').classList.remove('sembunyi');
+            tulis('tagihan', rupiah(tagihan));
+            tulis('porsi-tunai', rupiah(porsi.tunai));
+            tulis('porsi-qris', rupiah(porsi.qris));
+            tulis('nominal-qris', rupiah(porsi.qris));
+            el('info-split').classList.toggle('sembunyi', metode !== 'split');
+            el('tahap-tunai').classList.toggle('sembunyi', metode === 'qris');
+            el('tahap-qris').classList.toggle('sembunyi', metode !== 'qris');
+            tampilkan();
+        });
+
+        el('btn-bayar-tunai').addEventListener('click', () => {
+            const isian = el('uang-tunai').value;
+            const uang = Number(isian);
+            if (isian === '' || !Number.isInteger(uang) || uang <= 0) {
+            tulis('pesan-bayar', 'Masukkan nominal uang tunai yang valid');
+            return;
+            }
+            if (uang < porsi.tunai) {
+            tulis('pesan-bayar', 'Uang tunai kurang dari ' + rupiah(porsi.tunai));
+            return;
+            }
+            dibayar.tunai = porsi.tunai;
+            kembalian = uang - porsi.tunai;
+            tulis('kembalian', rupiah(kembalian));
+            el('btn-bayar-tunai').disabled = true;
+            el('uang-tunai').disabled = true;
+
+            if (metode === 'split') {
+            tulis('status', 'Sebagian Dibayar');
+            tulis('pesan-bayar', 'Pembayaran tunai ' + rupiah(porsi.tunai) + ' diterima. Lanjutkan pembayaran QRIS ' + rupiah(porsi.qris));
+            el('tahap-qris').classList.remove('sembunyi');
+            } else {
+            pembayaranBerhasil();
+            }
+        });
+
+        el('btn-qris-berhasil').addEventListener('click', () => {
+            dibayar.qris = porsi.qris;
+            pembayaranBerhasil();
+        });
+
+        el('btn-qris-gagal').addEventListener('click', () => {
+            tulis('pesan-bayar', 'Pembayaran QRIS gagal. Silakan coba lagi atau batalkan transaksi');
+            tulis('status', dibayar.tunai > 0 ? 'Sebagian Dibayar' : 'Gagal');
+        });
+
+        function pembayaranBerhasil() {
+            tulis('status', 'Lunas');
+            tulis('pesan-bayar', 'Pembayaran berhasil');
+            el('btn-selesai').disabled = false;
+            ['btn-qris-berhasil', 'btn-qris-gagal', 'btn-batal'].forEach(id => { el(id).disabled = true; });
+        }
+
+        el('btn-batal').addEventListener('click', () => {
+            const dikembalikan = dibayar.tunai;
+            tulis('status', 'Dibatalkan');
+            tulis('pesan-bayar', dikembalikan
+            ? 'Transaksi dibatalkan. Uang tunai ' + rupiah(dikembalikan) + ' dikembalikan ke pelanggan'
+            : 'Transaksi dibatalkan');
+            dibayar = { tunai: 0, qris: 0 };
+            ['btn-selesai', 'btn-bayar-tunai', 'btn-qris-berhasil', 'btn-qris-gagal', 'btn-batal'].forEach(id => { el(id).disabled = true; });
+        });
+
+        // ---------------- Selesai & struk ----------------
+        el('btn-selesai').addEventListener('click', () => {
+            if (selesai || el('status').textContent !== 'Lunas') return;
+            selesai = true;
+            el('btn-selesai').disabled = true;
+            window.jumlahPenjualan++;
+
+            const subtotal = hitungSubtotal();
+            const diskon = diskonDipakai ? hitungDiskon(subtotal) : 0;
+            tulis('struk', [
+            'STRUK PEMBELIAN', ...keranjang.map(b => b.nama + ' x' + b.qty + '  ' + rupiah(b.harga * b.qty)), '----',
+            'Subtotal: ' + rupiah(subtotal),
+            'Diskon: ' + (diskon ? '-' + rupiah(diskon) : 'Rp0'),
+            'Total: ' + rupiah(tagihan),
+            ...(dibayar.tunai ? ['Tunai: ' + rupiah(dibayar.tunai)] : []),
+            ...(dibayar.qris ? ['QRIS: ' + rupiah(dibayar.qris)] : []),
+            'Kembalian: ' + rupiah(kembalian),
+            'Status: LUNAS',
+            ].join('\n'));
+            el('panel-struk').classList.remove('sembunyi');
+        });
+
+        el('btn-cetak').addEventListener('click', () => tulis('pesan-struk', 'Struk sedang dicetak'));
+
+        el('btn-kirim-struk').addEventListener('click', () => {
+            const email = el('email-struk').value.trim();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { tulis('pesan-struk', 'Format email tidak valid'); return; }
+            tulis('pesan-struk', 'Struk digital berhasil dikirim ke ' + email);
+        });
+
+        tampilkan();
+    </script>
+</body>
+</html>

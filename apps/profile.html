@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Input your profile</title>
+  <style>
+    body { font-family: sans-serif; max-width: 400px; margin: auto; padding: 16px; }
+    label { display: block; margin-top: 14px; font-size: 14px; }
+    small { color: #999; }
+    input[type=text] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 10px; box-sizing: border-box; }
+    input.invalid { border-color: rgb(255, 0, 0); }
+    .error { color: red; font-size: 12px; }
+    #save { width: 100%; margin-top: 20px; padding: 12px; background: #d81b60; color: white; border: 0; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <h3><button id="back" aria-label="Back">&larr;</button> Input your profile</h3>
+
+  <label for="firstName">First Name</label>
+  <input type="text" id="firstName" placeholder="e.g Joel">
+  <div class="firstName-error" id="firstName-error"></div>
+
+  <label for="middleName">Middle Name <small>(Optional)</small></label>
+  <input type="text" id="middleName" placeholder="e.g K">
+  <div class="middleName-error" id="middleName-error"></div>
+
+  <label for="lastName">Last Name <small>(Optional)</small></label>
+  <input type="text" id="lastName" placeholder="e.g Osteen">
+  <div class="lastName-error" id="lastName-error"></div>
+
+  <label for="nickname">Nickname</label>
+  <input type="text" id="nickname" placeholder="Nickname">
+  <div class="nickname-error" id="nickname-error"></div>
+
+  <label>Gender</label>
+  <label><input type="radio" name="gender" id="male" value="Male" checked> Male</label>
+  <label><input type="radio" name="gender" id="female" value="Female"> Female</label>
+
+  <label for="birthDate">Birth Date</label>
+  <input type="text" id="birthDate" placeholder="DD MMM YYYY">
+  <div class="error" id="birthDate-error"></div>
+
+  <button id="save">Save</button>
+  <div id="message"></div>
+
+  <script>
+    const namePattern = /^[A-Za-zÀ-ÿ .'-]+$/;   // huruf, spasi, titik, apostrof, tanda hubung
+    const nickPattern = /^[A-Za-z0-9]+$/;       // huruf dan angka saja
+    const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    // nama bulan yang diterima (Inggris & Indonesia, singkat & lengkap) -> nomor bulan 0-11
+    const monthNames = {
+      jan: 0, january: 0, januari: 0,
+      feb: 1, february: 1, februari: 1,
+      mar: 2, march: 2, maret: 2,
+      apr: 3, april: 3,
+      may: 4, mei: 4,
+      jun: 5, june: 5, juni: 5,
+      jul: 6, july: 6, juli: 6,
+      aug: 7, august: 7, agu: 7, agt: 7, agustus: 7,
+      sep: 8, sept: 8, september: 8,
+      oct: 9, october: 9, okt: 9, oktober: 9,
+      nov: 10, november: 10,
+      dec: 11, december: 11, des: 11, desember: 11
+    };
+
+    window.saveCount = 0;
+    window.savedData = null;
+    let saving = false;
+
+    function el(id) { return document.getElementById(id); }
+    function val(id) { return el(id).value.trim(); }
+    function setError(id, msg) {
+      el(id + '-error').textContent = msg;
+      el(id).classList.toggle('invalid', msg !== '');
+    }
+
+    // "22 November 2005" / "22 Mei 2005" / "22 Nov 2005" -> Date, atau null kalau tidak valid
+    function parseDate(text) {
+      const m = text.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+      if (!m) return null;
+      const month = monthNames[m[2].toLowerCase()];
+      if (month === undefined) return null;
+      const date = new Date(Number(m[3]), month, Number(m[1]));
+      if (date.getMonth() !== month || date.getDate() !== Number(m[1])) return null; // contoh: 31 Feb
+      return date;
+    }
+    function formatDate(date) {
+      return String(date.getDate()).padStart(2, '0') + ' ' + monthShort[date.getMonth()] + ' ' + date.getFullYear();
+    }
+
+    function checkName(id, label, required) {
+      const v = val(id);
+      if (!v) return required ? label + ' is required' : '';
+      if (!namePattern.test(v)) return label + ' may only contain letters';
+      if (v.length > 50) return 'The ' + label + ' must contain a maximum of 50 characters.';
+      return '';
+    }
+
+    el('birthDate').addEventListener('blur', function () {
+      const d = parseDate(this.value.trim());
+      if (d) this.value = formatDate(d);
+    });
+
+    // hapus error saat field mulai diperbaiki
+    ['firstName', 'middleName', 'lastName', 'nickname', 'birthDate'].forEach(id => {
+      el(id).addEventListener('input', () => setError(id, ''));
+    });
+
+    el('save').addEventListener('click', function () {
+      if (saving) return;
+      el('message').textContent = '';
+
+      const errors = {
+        firstName: checkName('firstName', 'First Name', true),
+        middleName: checkName('middleName', 'Middle Name', false),
+        lastName: checkName('lastName', 'Last Name', false),
+        nickname: '',
+        birthDate: ''
+      };
+
+      const nick = val('nickname');
+      if (!nick) errors.nickname = 'Nickname is required';
+      else if (!nickPattern.test(nick)) errors.nickname = 'Nickname may only contain letters and numbers';
+      else if (nick.length > 20) errors.nickname = 'The Nickname must contain a maximum of 20 characters.';
+
+      const birthText = val('birthDate');
+      const birth = parseDate(birthText);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (!birthText) errors.birthDate = 'Birth Date is required';
+      else if (!birth) errors.birthDate = 'Birth Date is not valid';
+      else if (birth > today) errors.birthDate = 'Birth Date cannot be in the future';
+      else el('birthDate').value = formatDate(birth);
+
+      let ok = true;
+      for (const id in errors) {
+        setError(id, errors[id]);
+        if (errors[id]) ok = false;
+      }
+      if (!ok) return;
+
+      saving = true;
+      this.disabled = true;
+      setTimeout(() => {
+        window.saveCount++;
+        window.savedData = {
+          firstName: val('firstName'), middleName: val('middleName'), lastName: val('lastName'),
+          nickname: val('nickname'), gender: document.querySelector('input[name=gender]:checked').value,
+          birthDate: val('birthDate')
+        };
+        el('message').textContent = 'Profile Saved Successfully';
+        saving = false;
+        this.disabled = false;
+      }, 500);
+    });
+
+    el('back').addEventListener('click', function () {
+      const filled = ['firstName', 'middleName', 'lastName', 'nickname', 'birthDate'].some(id => val(id) !== '');
+      if (filled && !confirm('Discard changes?')) return;
+      document.body.setAttribute('data-left', 'yes');
+    });
+  </script>
+</body>
+</html>
